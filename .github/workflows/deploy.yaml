@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'Dockerfile'
+
+jobs:
+  build:
+    runs-on: arc-runners
+    env:
+      TAG: ${{ github.run_number }}
+      IMAGE: registry.registry:5000/platform-static/static-server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to registry
+        run: echo "$REGISTRY_PASS" | docker login registry.registry:5000 -u "$REGISTRY_USER" --password-stdin
+
+      - name: Build & push
+        run: |
+          docker build \
+            -t "${IMAGE}:${TAG}" \
+            -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+
+      - name: Update recipe repo
+        run: |
+          git clone "https://x-access-token:${ALLVIBE_PAT}@github.com/all-vibe/recipe.git" /tmp/recipe
+          cd /tmp/recipe
+          sed -i "s|image: ${IMAGE}:.*|image: ${IMAGE}:${TAG}|" apps/platform-static/deployment.yaml
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "🚀 platform-static ${TAG}" && git push
