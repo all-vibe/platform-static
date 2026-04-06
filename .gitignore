@@ -1,0 +1,17 @@
+# Go build artifacts
+*.exe
+*.out
+/static-server
+/bin/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# Local go.work (각자 개발 머신에서만)
+go.work
+go.work.sum
