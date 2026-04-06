@@ -24,9 +24,9 @@ func New(secret string) *Signer {
 }
 
 // Sign은 baseURL + path에 exp/sig 쿼리를 붙인 서명 URL을 반환한다.
-// baseURL 예: "https://static.allvibe.ai"
-// path 예:    "/mamuree/uploads/tasks/abc/file.jpg"
-// 반환 URL:   "https://static.allvibe.ai/mamuree/uploads/tasks/abc/file.jpg?exp=...&sig=..."
+// baseURL 예: "https://static.example.com"
+// path 예:    "/app/uploads/file.jpg"
+// 반환 URL:   "https://static.example.com/app/uploads/file.jpg?exp=...&sig=..."
 func (s *Signer) Sign(baseURL, path string, ttl time.Duration) string {
 	exp := time.Now().Add(ttl).Unix()
 	mac := hmac.New(sha256.New, s.secret)
