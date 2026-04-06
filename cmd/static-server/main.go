@@ -101,6 +101,20 @@ func (h *handler) serveFile(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", ct)
 	}
 
+	// Content-Disposition: download=1이면 attachment, 아니면 inline.
+	dispType := "inline"
+	if r.URL.Query().Get("download") == "1" {
+		dispType = "attachment"
+	}
+	rawName := r.URL.Query().Get("name")
+	if rawName != "" {
+		safeName := stripCRLF(rawName)
+		encoded := urlPercentEncode(safeName)
+		w.Header().Set("Content-Disposition", fmt.Sprintf("%s; filename*=UTF-8''%s", dispType, encoded))
+	} else {
+		w.Header().Set("Content-Disposition", dispType)
+	}
+
 	http.ServeContent(w, r, filepath.Base(fullPath), stat.ModTime(), f)
 }
 
@@ -108,6 +122,34 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	fmt.Fprintf(w, `{"error":{"code":%q,"message":%q}}`, code, message)
+}
+
+// stripCRLF는 HTTP 헤더 인젝션 방지를 위해 CR/LF 및 제어 문자를 제거한다.
+func stripCRLF(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r == '\r' || r == '\n' || r < 0x20 || r == 0x7f {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// urlPercentEncode는 RFC 5987 filename*용 percent encoding을 수행한다.
+func urlPercentEncode(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+			c == '!' || c == '#' || c == '$' || c == '&' || c == '+' || c == '-' ||
+			c == '.' || c == '^' || c == '_' || c == '`' || c == '|' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
 }
 
 func main() {

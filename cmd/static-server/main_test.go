@@ -160,3 +160,67 @@ func TestServePathTraversal(t *testing.T) {
 		t.Errorf("expected 403 or 404, got %d", rec.Code)
 	}
 }
+
+func TestServeContentDispositionDownload(t *testing.T) {
+	root, rel := setupMedia(t)
+	cfg := serverConfig{signSecret: "test-secret", mediaRoot: root, allowedPrefixes: map[string]struct{}{"mamuree": {}}}
+	h := newHandler(cfg)
+	s := signer.New(cfg.signSecret)
+
+	signedURL := s.Sign("", rel, 10*time.Minute)
+	url := signedURL + "&download=1&name=%EC%8A%A4%ED%81%AC%EB%A6%B0%EC%83%B7.png"
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	cd := rec.Header().Get("Content-Disposition")
+	if !strings.HasPrefix(cd, "attachment;") {
+		t.Errorf("expected attachment disposition, got: %s", cd)
+	}
+	if !strings.Contains(cd, `filename*=UTF-8''`) {
+		t.Errorf("expected RFC 5987 filename*, got: %s", cd)
+	}
+	if !strings.Contains(cd, "%EC%8A%A4%ED%81%AC%EB%A6%B0%EC%83%B7.png") {
+		t.Errorf("expected percent-encoded name, got: %s", cd)
+	}
+}
+
+func TestServeContentDispositionInlineDefault(t *testing.T) {
+	root, rel := setupMedia(t)
+	cfg := serverConfig{signSecret: "test-secret", mediaRoot: root, allowedPrefixes: map[string]struct{}{"mamuree": {}}}
+	h := newHandler(cfg)
+	s := signer.New(cfg.signSecret)
+
+	url := s.Sign("", rel, 10*time.Minute) + "&name=foo.txt"
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	cd := rec.Header().Get("Content-Disposition")
+	if !strings.HasPrefix(cd, "inline;") {
+		t.Errorf("expected inline disposition, got: %s", cd)
+	}
+}
+
+func TestServeNameHeaderInjection(t *testing.T) {
+	root, rel := setupMedia(t)
+	cfg := serverConfig{signSecret: "test-secret", mediaRoot: root, allowedPrefixes: map[string]struct{}{"mamuree": {}}}
+	h := newHandler(cfg)
+	s := signer.New(cfg.signSecret)
+
+	url := s.Sign("", rel, 10*time.Minute) + "&name=evil%0D%0AX-Injected:%20yes"
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Header().Get("X-Injected") != "" {
+		t.Errorf("CRLF injection not prevented")
+	}
+	cd := rec.Header().Get("Content-Disposition")
+	if strings.ContainsAny(cd, "\r\n") {
+		t.Errorf("Content-Disposition must not contain CR/LF, got: %q", cd)
+	}
+}
